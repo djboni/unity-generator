@@ -72,7 +72,7 @@ prerequisites: ./build ./build/compile_commands.json
 		./build/test/test_mylib_extra.o ./build/test/runner_test_mylib_extra.o \
 		./build/test/unity/unity.o \
 		| ./build
-	$(CC) $(CFLAGS) -DGENERATOR_NO_MAIN $^ -o $@
+	$(CC) $(CFLAGS) $^ -o $@
 
 # Include the dependency files
 -include $(DEPS)
