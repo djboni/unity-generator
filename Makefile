@@ -43,7 +43,7 @@ prerequisites: ./build ./build/compile_commands.json
 # Build object files
 ./build/test/%.o: ./test/%.c | ./build
 	$(CC) $(INCLUDES) $(CFLAGS) $(UNITY_CFLAGS) -MMD -MP -o $@ -c $<
-./build/%.o: ./build/%.c | ./build
+./build/%.o: ./%.c | ./build
 	$(CC) $(INCLUDES) $(CFLAGS) -MMD -MP -o $@ -c $<
 
 # Compilation commands for LSP
