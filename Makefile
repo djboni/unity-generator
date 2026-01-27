@@ -3,15 +3,14 @@ OPTIMIZATION = -O0
 CFLAGS = $(OPTIMIZATION) -ggdb3 -Wall -Wextra
 UNITY_CFLAGS = -I./test/unity/ -DUNITY_USE_COMMAND_LINE_ARGS
 INCLUDES = -I./include/
+EXT =
 
-# Executable extension
 OS := $(shell uname -s)
 ifneq (,$(findstring Windows,$(OS)))
     EXT = .exe
 else ifneq (,$(findstring MINGW,$(OS)))
     EXT = .exe
 else
-	EXT =
 endif
 
 # Source, object and dependency files
@@ -42,8 +41,10 @@ prerequisites: ./build ./build/compile_commands.json
 	mkdir -p $(DIRS)
 
 # Build object files
-./build/%.o: %.c | ./build
+./build/test/%.o: ./test/%.c | ./build
 	$(CC) $(INCLUDES) $(CFLAGS) $(UNITY_CFLAGS) -MMD -MP -o $@ -c $<
+./build/%.o: ./build/%.c | ./build
+	$(CC) $(INCLUDES) $(CFLAGS) -MMD -MP -o $@ -c $<
 
 # Compilation commands for LSP
 ./build/compile_commands.json: Makefile | ./test/runner_global.c ./build
@@ -51,7 +52,7 @@ prerequisites: ./build ./build/compile_commands.json
 	    | grep -wE 'gcc|g\+\+|clang|clang\+\+|zig cc|zig c\+\+|filcc|fil\+\+' \
 	    | grep -w '\-c' \
 	    | jq -nR '[inputs|{directory:"$(PWD)", command:., file: match(" [^ ]+$$").string[1:]}]' \
-	    > ./build/compile_commands.json || true
+	    > ./build/compile_commands.json || touch ./build/compile_commands.json
 
 # Executable that generates test runners
 ./build/generator$(EXT): ./build/test/unity/generator.o | ./build
