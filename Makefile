@@ -2,6 +2,7 @@ CC = gcc
 OPTIMIZATION = -O0
 CFLAGS = $(OPTIMIZATION) -ggdb3 -Wall -Wextra
 UNITY_CFLAGS = -I./test/unity/ -DUNITY_USE_COMMAND_LINE_ARGS
+LDFLAGS =
 INCLUDES = -I./include/
 EXT =
 
@@ -56,7 +57,7 @@ prerequisites: ./build ./build/compile_commands.json
 
 # Executable that generates test runners
 ./build/generator$(EXT): ./build/test/unity/generator.o | ./build
-	$(CC) $(CFLAGS) $< -o $@
+	$(CC) $(CFLAGS) $< -o $@ $(LDFLAGS)
 
 # Generate test runners: global runner and all test files
 ./test/runner_global.c: \
@@ -73,7 +74,7 @@ prerequisites: ./build ./build/compile_commands.json
 		./build/test/test_mylib_extra.o ./build/test/runner_test_mylib_extra.o \
 		./build/test/unity/unity.o \
 		| ./build
-	$(CC) $(CFLAGS) $^ -o $@
+	$(CC) $(CFLAGS) $^ -o $@ $(LDFLAGS)
 
 # Include the dependency files
 -include $(DEPS)
