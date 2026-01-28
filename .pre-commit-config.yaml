@@ -18,4 +18,4 @@ repos:
         language: system
         files: \.(c|h)$
         args: ['-i', '--style=file']
-        exclude: '^test\/unity\/'
+        exclude: '^test\/unity\/|.*\/runner_.*\.c$'
