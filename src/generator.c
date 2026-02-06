@@ -31,6 +31,12 @@ typedef struct {
 } da_u8_t;
 
 typedef struct {
+    da_u8_t *items;
+    uint32_t count;
+    uint32_t capacity;
+} da_strpool_t;
+
+typedef struct {
     da_u8_t data;
     const char *filename;
     uint32_t pos;
@@ -95,44 +101,58 @@ bool fp_write(FILE *fp, const void *data, uint32_t len);
         da_init(array); \
     } while (0)
 
-#define da_alloc_capacity(array, new_capacity) \
+#define da_alloc_capacity(array, new_capacity_) \
     do { \
-        uint32_t a_new_capacity = (new_capacity); \
-        if ((array)->capacity < a_new_capacity) { \
-            *(void **)&(array)->items = realloc((array)->items, a_new_capacity * sizeof((array)->items[0])); \
+        uint64_t new_capacity__ = (new_capacity_); \
+        if ((array)->capacity < new_capacity__) { \
+            if (new_capacity__ < 4) { \
+                new_capacity__ = 4; \
+            } \
+            if (new_capacity__ < 2 * (array)->capacity) { \
+                new_capacity__ = 2 * (array)->capacity; \
+            } \
+            *(void **)&(array)->items = realloc((array)->items, new_capacity__ * sizeof((array)->items[0])); \
             assert((array)->items); \
-            (array)->capacity = a_new_capacity; \
+            (array)->capacity = new_capacity__; \
         } else { \
             /* Should we shrink in this case? */ \
         } \
     } while (0)
 
-#define da_alloc_double_capacity(array) \
+#define da_append(array, item_) \
     do { \
-        uint32_t new_capacity = 2 * (array)->capacity; \
-        if (new_capacity == 0) \
-            new_capacity = 4; \
-        da_alloc_capacity((array), new_capacity); \
-    } while (0)
-
-#define da_append(array, new_item) \
-    do { \
-        if ((array)->capacity < (array)->count + 1) { \
-            da_alloc_double_capacity(array); \
-        } \
-        (array)->items[(array)->count] = (new_item); \
+        da_alloc_capacity(array, (array)->count + 1); \
+        (array)->items[(array)->count] = (item_); \
         (array)->count += 1; \
     } while (0)
 
-#define da_append_many(array, ptr, a__count) \
+#define da_append_null(array, count_) \
     do { \
-        uint32_t a_count = (a__count); \
-        da_alloc_capacity(array, (array)->count + a_count); \
-        memcpy(&(array)->items[(array)->count], (ptr), a_count * sizeof((array)->items[0])); \
-        (array)->count += a_count; \
+        uint64_t count__ = (count_); \
+        da_alloc_capacity(array, (array)->count + count__); \
+        memset(&(array)->items[(array)->count], 0, count__ * sizeof((array)->items[0])); \
+        (array)->count += count__; \
     } while (0)
 
+#define da_append_many(array, items_, count_) \
+    do { \
+        uint64_t count__ = (count_); \
+        da_alloc_capacity(array, (array)->count + count__); \
+        memcpy(&(array)->items[(array)->count], (items_), count__ * sizeof((array)->items[0])); \
+        (array)->count += count__; \
+    } while (0)
+
+#define da_get_last_ptr(array) (assert((array)->count > 0), &(array)->items[(array)->count - 1])
+
 bool da_appendf(da_u8_t *str, const char *format, ...);
+
+#define tmpprintf(dest_ptr, strpool, format, ...) \
+    do { \
+        da_append_null((strpool), 1); \
+        da_u8_t *str = da_get_last_ptr(strpool); \
+        da_appendf(str, (format), __VA_ARGS__); \
+        *(dest_ptr) = (void *)str->items; \
+    } while (0)
 
 #ifdef __cplusplus
 }
@@ -362,12 +382,7 @@ int da_appendf(da_u8_t *str, const char *format, ...) {
             return necessary;
         } else {
             /* Not enough capacity */
-            uint32_t new_capacity = str->count + necessary + 1;
-            if (new_capacity <= 2 * str->capacity) {
-                da_alloc_double_capacity(str);
-            } else {
-                da_alloc_capacity(str, new_capacity);
-            }
+            da_alloc_capacity(str, str->count + necessary + 1);
             continue;
         }
     } while (1);
@@ -447,13 +462,9 @@ static void tolken_skip_whitespace(tolkenizer_t *t) {
     }
 }
 
-static bool tolken_advance_to_str(tolkenizer_t *t, const char *str, uint32_t str_len, const char *ign, uint32_t ign_len) {
+static bool tolken_advance_to_str(tolkenizer_t *t, const char *str, uint32_t str_len) {
     while (t->pos < t->data.count) {
         uint8_t ch = t->data.items[t->pos];
-        if (ign_len != 0 && ch == ign[0] && t->pos + ign_len <= t->data.count && !memcmp(&t->data.items[t->pos], ign, ign_len)) {
-            t->pos += ign_len;
-            continue;
-        }
         if (ch == str[0] && t->pos + str_len <= t->data.count && !memcmp(&t->data.items[t->pos], str, str_len)) {
             t->pos += str_len;
             return true;
@@ -476,6 +487,21 @@ static bool tolken_advance_to_str(tolkenizer_t *t, const char *str, uint32_t str
             t->line += 1;
         } else {
             t->column += 1;
+        }
+    }
+    return false;
+}
+
+static bool tolken_advance_to_unescaped_char(tolkenizer_t *t, uint8_t needle, uint8_t esc) {
+    while (t->pos < t->data.count) {
+        uint8_t ch = t->data.items[t->pos];
+        if (ch == needle) {
+            t->pos += 1;
+            return true;
+        } else if (ch == esc) {
+            t->pos += 2;
+        } else {
+            t->pos += 1;
         }
     }
     return false;
@@ -522,7 +548,7 @@ bool tolken_next(tolkenizer_t *t, token_t *out) {
         /* C comment */
         if (ch == '/' && t->pos + 2 <= t->data.count && !memcmp(&t->data.items[t->pos], "/*", 2)) {
             t->pos += 2;
-            ret = tolken_advance_to_str(t, "*/", 2, "", 0);
+            ret = tolken_advance_to_str(t, "*/", 2);
             goto end;
         }
 
@@ -536,14 +562,14 @@ bool tolken_next(tolkenizer_t *t, token_t *out) {
         /* String */
         if (ch == '"' && t->pos + 1 <= t->data.count && !memcmp(&t->data.items[t->pos], "\"", 1)) {
             t->pos += 1;
-            ret = tolken_advance_to_str(t, "\"", 1, "\\\"", 2);
+            ret = tolken_advance_to_unescaped_char(t, '"', '\\');
             goto end;
         }
 
         /* Character */
         if (ch == '\'' && t->pos + 1 <= t->data.count && !memcmp(&t->data.items[t->pos], "'", 1)) {
             t->pos += 1;
-            ret = tolken_advance_to_str(t, "'", 1, "\\'", 2);
+            ret = tolken_advance_to_unescaped_char(t, '\'', '\\');
             goto end;
         }
 
@@ -897,6 +923,11 @@ static void generate_test_runner(const char *testfile, const char *module, const
         "/* DO NOT EDIT: File automatically generated. */\n"
         "#include \"unity.h\"\n"
         "\n"
+        "/* Use GENERATOR_RUNNER to control definitions in the test and in the runner.\n"
+        " * Useful to disable *_IMPLEMENTATION definitions in the runner when\n"
+        " * using STB style header only libraries in the test file.\n"
+        " */\n"
+        "#define GENERATOR_RUNNER 1\n"
         "extern void UnityCustomTestRun(void (*Func)(void), void (*SetUp)(void), void (*TearDown)(void), const char *FuncName, const int FuncLineNum);\n"
         "\n"
         "");
@@ -1127,21 +1158,39 @@ static strings_not_owned_t test_files_paths = {0};
 static strings_owned_t test_runners_paths = {0};
 static strings_owned_t test_module_names = {0};
 
+bool verbose = false;
+const char *dir_prefix = "./";
+
 int main(int argc, char **argv) {
+    da_strpool_t strpool = {0};
     uint32_t i;
     program = SHIFT_ARGS(argc, argv);
-    if (argc < 1) {
-        fprintf(stderr, "%s: error: no output file\n", program);
-        return 1;
-    }
+
     for (i = 0; (int)i < argc; ++i) {
         if (!strcmp("-h", argv[i]) || !strcmp("--help", argv[i])) {
-            fprintf(stderr, "Usage: %s [-h|--help] GLOBAL_RUNNER TEST_FILES...\n", program);
+            fprintf(stderr, "Usage: %s [-v|--verbose|-h|--help] [-d|--dir PREFIX] GLOBAL_RUNNER TEST_FILES...\n", program);
             return 0;
         }
     }
 
+    if (argc > 1 && (!strcmp("-v", argv[0]) || !strcmp("--verbose", argv[0]))) {
+        SHIFT_ARGS(argc, argv);
+        verbose = true;
+    }
+
+    if (argc > 1 && (!strcmp("-d", argv[0]) || !strcmp("--dir", argv[0]))) {
+        SHIFT_ARGS(argc, argv);
+        dir_prefix = SHIFT_ARGS(argc, argv);
+    }
+
+    if (argc < 1) {
+        fprintf(stderr, "%s: error: no output file\n", program);
+        return 1;
+    }
+
     global_runner_path = SHIFT_ARGS(argc, argv);
+    tmpprintf(&global_runner_path, &strpool, "%s/%s", dir_prefix, global_runner_path);
+
     da_alloc_capacity(&test_files_paths, argc);
     for (i = 0; argc > 0; ++i) {
         const char *path = SHIFT_ARGS(argc, argv);
@@ -1153,14 +1202,18 @@ int main(int argc, char **argv) {
         return 1;
     }
 
-    fprintf(stderr, "Listing files:\n");
-    fprintf(stderr, "- Global Runner: %s\n", global_runner_path);
-    for (i = 0; i < test_files_paths.count; ++i) {
-        const char *path = test_files_paths.items[i];
-        fprintf(stderr, "- Test File %d: %s\n", i + 1, path);
+    if (verbose) {
+        fprintf(stderr, "Listing files:\n");
+        fprintf(stderr, "- Global Runner: %s\n", global_runner_path);
+        for (i = 0; i < test_files_paths.count; ++i) {
+            const char *path = test_files_paths.items[i];
+            fprintf(stderr, "- Test File %d: %s\n", i + 1, path);
+        }
     }
 
-    fprintf(stderr, "Processing:\n");
+    if (verbose) {
+        fprintf(stderr, "Processing:\n");
+    }
     for (i = 0; i < test_files_paths.count; ++i) {
         const char *begin = "test_";
         const char *path = test_files_paths.items[i];
@@ -1172,10 +1225,13 @@ int main(int argc, char **argv) {
         char *module = NULL;
         uint32_t module_len = base_len - (5 + 1 + ext_len); /* 5="test_" - 1="." */
         char *runner = NULL;
+        char *dir_prefix_runner = NULL;
         uint32_t runner_len = path_len + 7; /* 7="runner_" */
 
-        fprintf(stderr, "- Processing Test File %d:\n", i + 1);
-        fprintf(stderr, "    - Test File Path:   %s\n", path);
+        if (verbose) {
+            fprintf(stderr, "- Processing Test File %d:\n", i + 1);
+            fprintf(stderr, "    - Test File Path:   %s\n", path);
+        }
 
         if (!startswith(base, begin)) {
             fprintf(stderr, "%s: error: test file name is expected to start with '%s': '%s'\n", program, begin, global_runner_path);
@@ -1197,8 +1253,13 @@ int main(int argc, char **argv) {
         strcat(runner, "runner_");
         strcat(runner, &path[path_len - base_len]);
         assert(runner_len == strlen(runner));
+        tmpprintf(&dir_prefix_runner, &strpool, "%s/%s", dir_prefix, runner);
+        free(runner);
+        runner = dir_prefix_runner;
         da_append(&test_runners_paths, runner);
-        fprintf(stderr, "    - Runner File Path: %s\n", runner);
+        if (verbose) {
+            fprintf(stderr, "    - Runner File Path: %s\n", runner);
+        }
 
         module = malloc(module_len + 1);
         assert(module != NULL);
@@ -1207,13 +1268,16 @@ int main(int argc, char **argv) {
         assert(module_len == strlen(module));
         da_append(&test_module_names, module);
 
-        fprintf(stderr, "    - Module Name:      %s\n", module);
+        if (verbose) {
+            fprintf(stderr, "    - Module Name:      %s\n", module);
+        }
 
         generate_test_runner(path, module, runner);
     }
-
-    fprintf(stderr, "- Processing Global Runner:\n");
-    fprintf(stderr, "    - Global Runner Path: %s\n", global_runner_path);
+    if (verbose) {
+        fprintf(stderr, "- Processing Global Runner:\n");
+        fprintf(stderr, "    - Global Runner Path: %s\n", global_runner_path);
+    }
 
     {
         const char *begin = "runner_";
@@ -1236,11 +1300,9 @@ int main(int argc, char **argv) {
         free(test_module_names.items[i]);
     }
     da_free(&test_module_names);
-    for (i = 0; i < test_runners_paths.count; ++i) {
-        free(test_runners_paths.items[i]);
-    }
     da_free(&test_runners_paths);
     da_free(&test_files_paths);
+    da_free(&strpool);
 
     return 0;
 }

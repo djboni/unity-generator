@@ -1,6 +1,11 @@
 /* DO NOT EDIT: File automatically generated. */
 #include "unity.h"
 
+/* Use GENERATOR_RUNNER to control definitions in the test and in the runner.
+ * Useful to disable *_IMPLEMENTATION definitions in the runner when
+ * using STB style header only libraries in the test file.
+ */
+#define GENERATOR_RUNNER 1
 extern void UnityCustomTestRun(void (*Func)(void), void (*SetUp)(void), void (*TearDown)(void), const char *FuncName, const int FuncLineNum);
 
 /* Headers and definitions from the test file. */

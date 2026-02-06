@@ -2,7 +2,9 @@
 
 #include <string.h>
 
-#define GENERATOR_NO_IMPLEMENTATION
+#ifdef GENERATOR_RUNNER
+#    define GENERATOR_NO_IMPLEMENTATION
+#endif
 #ifndef GENERATOR_NO_MAIN
 #    define GENERATOR_NO_MAIN
 #endif
@@ -387,6 +389,29 @@ void test_tolken_get_string(void) {
     tolken_deinit(&t);
 }
 
+void test_tolken_get_string_bug_with_escaped_slash_before_end_of_string(void) {
+    const char code[] =
+        "\"\\\\\" end";
+    const char *expected[] = {"\"\\\\\"", "end"};
+    uint32_t expected_len = sizeof(expected) / sizeof(expected[0]);
+    uint32_t i;
+
+    tolken_init_str(&t, "test_func.c", code, strlen(code));
+    tolken_token_init(&s);
+
+    for (i = 0; i < expected_len; ++i) {
+        TEST_ASSERT_TRUE(tolken_next(&t, &s));
+        TEST_ASSERT_EQUAL_STRING(expected[i], (char *)s.items);
+        TEST_ASSERT_EQUAL(strlen(expected[i]), s.count);
+    }
+
+    TEST_ASSERT_FALSE(tolken_next(&t, &s));
+    TEST_ASSERT_EQUAL_STRING("", (char *)s.items);
+    TEST_ASSERT_EQUAL(0, s.count);
+
+    tolken_token_deinit(&s);
+    tolken_deinit(&t);
+}
 void test_tolken_get_character(void) {
     const char code[] =
         "'1'\n"
@@ -395,6 +420,31 @@ void test_tolken_get_character(void) {
         "'4'\r"
         "";
     const char *expected[] = {"'1'", "'2'", "'\\''", "'4'"};
+    uint32_t expected_len = sizeof(expected) / sizeof(expected[0]);
+    uint32_t i;
+
+    tolken_init_str(&t, "test_func.c", code, strlen(code));
+    tolken_token_init(&s);
+
+    for (i = 0; i < expected_len; ++i) {
+        TEST_ASSERT_TRUE(tolken_next(&t, &s));
+        TEST_ASSERT_EQUAL_STRING(expected[i], (char *)s.items);
+        TEST_ASSERT_EQUAL(strlen(expected[i]), s.count);
+    }
+
+    TEST_ASSERT_FALSE(tolken_next(&t, &s));
+    TEST_ASSERT_EQUAL_STRING("", (char *)s.items);
+    TEST_ASSERT_EQUAL(0, s.count);
+
+    tolken_token_deinit(&s);
+    tolken_deinit(&t);
+}
+
+void test_tolken_get_character_bug_with_escaped_slash_before_end_of_character(void) {
+    const char code[] =
+        "'\\\\' end"
+        "";
+    const char *expected[] = {"'\\\\'", "end"};
     uint32_t expected_len = sizeof(expected) / sizeof(expected[0]);
     uint32_t i;
 
