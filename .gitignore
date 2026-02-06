@@ -1,4 +1,5 @@
 build
 generator
 test_mylib
+test_generator
 .cache

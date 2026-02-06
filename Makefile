@@ -24,16 +24,17 @@ DEPS := $(SOURCES:%.c=./build/%.d)
 # Only build
 all: prerequisites \
 	./build/generator$(EXT) \
+	./build/test_generator$(EXT) \
 	./build/test_mylib$(EXT) \
 
 # Build and run the tests
 test: all
+	./build/test_generator$(EXT)
 	./build/test_mylib$(EXT)
 
 # Clean command
 clean:
 	rm -fr ./build
-	-find ./test -type f -name 'runner_*.c' -delete 2>/dev/null
 
 prerequisites: ./build ./build/compile_commands.json
 
@@ -65,6 +66,13 @@ prerequisites: ./build ./build/compile_commands.json
 		./test/test_mylib_extra.c \
 		| ./build/generator$(EXT)
 	./build/generator$(EXT) ./test/runner_global.c $^
+
+# Build the test executable
+./build/test_generator$(EXT): \
+		test2/test_generator.c test2/runner_test_generator.c \
+		test2/runner_generator.c \
+		test/unity/unity.c
+	gcc -o $@ -Itest/unity/ -Isrc/ test2/test_generator.c test2/runner_test_generator.c test2/runner_generator.c test/unity/unity.c
 
 # Build the test executable
 ./build/test_mylib$(EXT): \

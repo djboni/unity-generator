@@ -29,7 +29,7 @@ You can also use this repository as the starting point for your project.
 Build the generator with one command:
 
 ```sh
-gcc -o generator test/unity/generator.c
+gcc -o generator src/generator.c
 ```
 
 Generate test runners for multiple test files:
@@ -61,6 +61,19 @@ There is a makefile you can try:
 
 ```sh
 make test
+```
+
+## Testing the Generator
+
+The steps are pretty much the same.
+
+These are in the directory test2/ to avoid conflicts.
+
+```sh
+gcc -o generator src/generator.c
+./generator test2/runner_generator.c test2/test_generator.c
+gcc -o test_generator -Itest/unity/ -Isrc/ test2/test_generator.c test2/runner_test_generator.c test2/runner_generator.c test/unity/unity.c
+./test_generator
 ```
 
 ## Why this Project?
