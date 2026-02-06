@@ -56,7 +56,7 @@ prerequisites: ./build ./build/compile_commands.json
 	    > ./build/compile_commands.json || touch ./build/compile_commands.json
 
 # Executable that generates test runners
-./build/generator$(EXT): ./build/test/unity/generator.o | ./build
+./build/generator$(EXT): ./build/src/generator.o | ./build
 	$(CC) $(CFLAGS) $< -o $@ $(LDFLAGS)
 
 # Generate test runners: global runner and all test files
